@@ -1,6 +1,9 @@
 Arduino core for ESP8266 WiFi chip
 ===========================================
 
+## This version is an "Emergency merge" of https://github.com/esp8266/Arduino/pull/6538
+## In order to make it compile with PlatformIO 4.2.1 
+
 # Quick links
 
 - [Latest release documentation](https://arduino-esp8266.readthedocs.io/en/2.6.3/)
