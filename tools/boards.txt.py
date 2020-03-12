@@ -863,41 +863,21 @@ boards = collections.OrderedDict([
             'More details at https://shop.makestro.com/product/espectrocore/',
         ],
     }),
-
-	( 'eduinowifi', {
-        'name': 'Schirmilabs Eduino WiFi',
-        'opts': {
-            '.build.board': 'ESP8266_SCHIRMILABS_EDUINO_WIFI',
-            '.build.variant': 'eduinowifi',
-            },
-        'macro': [
-            'resetmethod_nodemcu',
-            'flashmode_dio',
-            'flashfreq_40',
-            '4M',
-            ],
-        'serial': '512',
-        'desc': [ 'Eduino WiFi is an Arduino-compatible DIY WiFi development board using an ESP-12 module',
-		          '',
-				  'Product page: https://schirmilabs.de/?page_id=165',
-				  ]
-
-    }),
     ( 'sonoff', {
         'name': 'ITEAD Sonoff',
         'opts': {
-            '.build.board': 'ESP8266_SONOFF_SV',
+            '.build.board': 'SONOFF_SV',
             '.build.variant': 'itead',
             '.build.extra_flags': '-DESP8266',
             '.build.flash_size': '1M',
             '.menu.BoardModel.sonoffSV': 'ITEAD Sonoff SV',
-            '.menu.BoardModel.sonoffSV.build.board': 'ESP8266_SONOFF_SV',
+            '.menu.BoardModel.sonoffSV.build.board': 'SONOFF_SV',
             '.menu.BoardModel.sonoffTH': 'ITEAD Sonoff TH',
-            '.menu.BoardModel.sonoffTH.build.board': 'ESP8266_SONOFF_TH',
+            '.menu.BoardModel.sonoffTH.build.board': 'SONOFF_TH',
             '.menu.BoardModel.sonoffBasic': 'ITEAD Sonoff Basic',
-            '.menu.BoardModel.sonoffBasic.build.board': 'ESP8266_SONOFF_BASIC',
+            '.menu.BoardModel.sonoffBasic.build.board': 'SONOFF_BASIC',
             '.menu.BoardModel.sonoffS20': 'ITEAD Sonoff S20',
-            '.menu.BoardModel.sonoffS20.build.board': 'ESP8266_SONOFF_S20',
+            '.menu.BoardModel.sonoffS20.build.board': 'SONOFF_S20',
              },
         'macro': [
             'resetmethod_none',
@@ -952,10 +932,8 @@ boards = collections.OrderedDict([
             'is a multi-chip package which contains ESP8266 and 1MB flash. ',
             '',
         ],
-
     })
-	])
-    
+    ])
 
 ################################################################
 
@@ -1065,7 +1043,7 @@ macros = {
     'resetmethod_nodtr_nosync': collections.OrderedDict([
         ( '.upload.resetmethod', '--before no_reset_no_sync --after soft_reset' ),
         ]),
-
+  
     ####################### menu.FlashMode
 
     'flashmode_menu': collections.OrderedDict([
@@ -1297,6 +1275,7 @@ def flash_map (flashsize_kb, fs_kb = 0):
     eeprom_size_kb = 4
     rfcal_size_kb = 4
     sdkwifi_size_kb = 12
+    ota_commands_size_kb = 8
     fs_end = (flashsize_kb - sdkwifi_size_kb - rfcal_size_kb - eeprom_size_kb) * 1024
 
     # For legacy reasons (#6531), the EEPROM sector needs to be at the old
@@ -1305,7 +1284,7 @@ def flash_map (flashsize_kb, fs_kb = 0):
 
     rfcal_addr = (flashsize_kb - sdkwifi_size_kb - rfcal_size_kb) * 1024
     if flashsize_kb <= 1024:
-        max_upload_size = (flashsize_kb - (fs_kb + eeprom_size_kb + rfcal_size_kb + sdkwifi_size_kb)) * 1024 - reserved
+        max_upload_size = (flashsize_kb - (fs_kb + eeprom_size_kb + rfcal_size_kb + sdkwifi_size_kb + ota_commands_size_kb)) * 1024 - reserved
         fs_start = fs_end - fs_kb * 1024
     else:
         max_upload_size = 1024 * 1024 - reserved
@@ -1318,8 +1297,9 @@ def flash_map (flashsize_kb, fs_kb = 0):
 
     # Adjust SPIFFS_end to be a multiple of the block size
     fs_end = fs_blocksize * (int)((fs_end - fs_start)/fs_blocksize) + fs_start;
+    ota_commands_addr = fs_start - (ota_commands_size_kb * 1024)
 
-    max_ota_size = min(max_upload_size, fs_start / 2) # =(max_upload_size+empty_size)/2
+    max_ota_size = min(max_upload_size, ota_commands_addr / 2) # =(max_upload_size+empty_size)/2
     strsize = str(int(flashsize_kb / 1024)) + 'M' if (flashsize_kb >= 1024) else str(flashsize_kb) + 'K'
     strfs = str(int(fs_kb / 1024)) + 'M' if (fs_kb >= 1024) else str(fs_kb) + 'K'
     strfs_strip = str(int(fs_kb / 1024)) + 'M' if (fs_kb >= 1024) else str(fs_kb) if (fs_kb > 0) else ''
@@ -1366,13 +1346,14 @@ def flash_map (flashsize_kb, fs_kb = 0):
 
         print("/* Flash Split for %s chips */" % strsize)
         print("/* sketch @0x%X (~%dKB) (%dB) */" % (spi, (max_upload_size / 1024), max_upload_size))
-        empty_size = fs_start - max_upload_size
+        empty_size = ota_commands_addr - max_upload_size
         if empty_size > 0:
-            print("/* empty  @0x%X (~%dKB) (%dB) */" % (spi + max_upload_size, empty_size / 1024, empty_size))
-        print("/* spiffs @0x%X (~%dKB) (%dB) */" % (spi + fs_start, ((fs_end - fs_start) / 1024), fs_end - fs_start))
-        print("/* eeprom @0x%X (%dKB) */" % (spi + rfcal_addr - eeprom_size_kb * 1024, eeprom_size_kb))
-        print("/* rfcal  @0x%X (%dKB) */" % (spi + rfcal_addr, rfcal_size_kb))
-        print("/* wifi   @0x%X (%dKB) */" % (spi + rfcal_addr + rfcal_size_kb * 1024, sdkwifi_size_kb))
+            print("/* empty    @0x%X (~%dKB) (%dB) */" % (spi + max_upload_size, empty_size / 1024, empty_size))
+        print("/* otacmds  @0x%X (%dKB) */" % (spi + ota_commands_addr, ota_commands_size_kb))
+        print("/* spiffs   @0x%X (~%dKB) (%dB) */" % (spi + fs_start, ((fs_end - fs_start) / 1024), fs_end - fs_start))
+        print("/* eeprom   @0x%X (%dKB) */" % (spi + rfcal_addr - eeprom_size_kb * 1024, eeprom_size_kb))
+        print("/* rfcal    @0x%X (%dKB) */" % (spi + rfcal_addr, rfcal_size_kb))
+        print("/* wifi     @0x%X (%dKB) */" % (spi + rfcal_addr + rfcal_size_kb * 1024, sdkwifi_size_kb))
         print("")
         print("MEMORY")
         print("{")
@@ -1382,10 +1363,17 @@ def flash_map (flashsize_kb, fs_kb = 0):
         print("  irom0_0_seg :                         org = 0x40201010, len = 0x%x" % max_upload_size)
         print("}")
         print("")
+        # print("PROVIDE ( _FS_start = 0x%08X );" % (0x40200000 + fs_start))
+        # print("PROVIDE ( _FS_end = 0x%08X );" % (0x40200000 + fs_end))
+        # print("PROVIDE ( _FS_page = 0x%X );" % page)
+        # print("PROVIDE ( _FS_block = 0x%X );" % fs_blocksize)
+
         print("PROVIDE ( _FS_start = 0x%08X );" % (0x40200000 + fs_start))
         print("PROVIDE ( _FS_end = 0x%08X );" % (0x40200000 + fs_end))
         print("PROVIDE ( _FS_page = 0x%X );" % page)
         print("PROVIDE ( _FS_block = 0x%X );" % fs_blocksize)
+        print("PROVIDE ( _BOOTLOADER_DATA = 0x%08X );" % (0x40200000 + ota_commands_addr))
+        print("PROVIDE ( _SKETCH_AREA_end = _BOOTLOADER_DATA );")
         print("PROVIDE ( _EEPROM_start = 0x%08x );" % (0x40200000 + eeprom_start))
         # Re-add deprecated symbols pointing to the same address as the new standard ones
         print("/* The following symbols are DEPRECATED and will be REMOVED in a future release */")
@@ -1395,6 +1383,8 @@ def flash_map (flashsize_kb, fs_kb = 0):
         print("PROVIDE ( _SPIFFS_block = 0x%X );" % fs_blocksize)
         print("")
         print('INCLUDE "local.eagle.app.v6.common.ld"')
+
+
 
         if ldgen:
             sys.stdout.close()
@@ -1479,14 +1469,12 @@ def led (name, default, ledList):
 
 def sdk ():
     return { 'sdk': collections.OrderedDict([
-                        ('.menu.sdk.nonosdk_190703', 'nonos-sdk 2.2.1+100 (190703)'),
-                        ('.menu.sdk.nonosdk_190703.build.sdk', 'NONOSDK22x_190703'),
-                        ('.menu.sdk.nonosdk_191122', 'nonos-sdk 2.2.1+119 (191122)'),
-                        ('.menu.sdk.nonosdk_191122.build.sdk', 'NONOSDK22x_191122'),
-                        ('.menu.sdk.nonosdk_191105', 'nonos-sdk 2.2.1+113 (191105)'),
-                        ('.menu.sdk.nonosdk_191105.build.sdk', 'NONOSDK22x_191105'),
                         ('.menu.sdk.nonosdk_191024', 'nonos-sdk 2.2.1+111 (191024)'),
                         ('.menu.sdk.nonosdk_191024.build.sdk', 'NONOSDK22x_191024'),
+                        ('.menu.sdk.nonosdk_191105', 'nonos-sdk 2.2.1+113 (191105)'),
+                        ('.menu.sdk.nonosdk_191105.build.sdk', 'NONOSDK22x_191105'),
+                        ('.menu.sdk.nonosdk_190703', 'nonos-sdk 2.2.1+100 (190703)'),
+                        ('.menu.sdk.nonosdk_190703.build.sdk', 'NONOSDK22x_190703'),
                      #  ('.menu.sdk.nonosdk_190313', 'nonos-sdk 2.2.1+61 (190313 testing)'),
                      #  ('.menu.sdk.nonosdk_190313.build.sdk', 'NONOSDK22x_190313'),
                         ('.menu.sdk.nonosdk221', 'nonos-sdk 2.2.1 (legacy)'),
@@ -1657,7 +1645,7 @@ def package ():
     # To get consistent indent/formatting read the JSON and write it out programattically
     if packagegen:
         with open(pkgfname, 'w') as package_file:
-            filejson = json.loads(newfilestr, object_pairs_hook=collections.OrderedDict)
+            filejson = json.loads(filestr, object_pairs_hook=collections.OrderedDict)
             package_file.write(json.dumps(filejson, indent=3, separators=(',',': ')))
         print("updated:   %s" % pkgfname)
     else:
